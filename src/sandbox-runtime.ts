@@ -2,6 +2,8 @@ import type { ISandboxManager, SandboxRuntimeConfig } from "@carderne/sandbox-ru
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, realpathSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { type BashOperations, getShellConfig } from "@earendil-works/pi-coding-agent";
@@ -45,11 +47,17 @@ function resolveUnixSockets(config: SandboxConfig): string[] | undefined {
   return unique(sockets);
 }
 
-const canonicalizeFilesystemPattern = (path: string, baseCwd?: string) =>
-  path.includes("*") ? path : canonicalizePath(path, baseCwd);
-
 const canonicalizeFilesystemPatterns = (paths: string[], baseCwd?: string) =>
-  unique(paths.map((path) => canonicalizeFilesystemPattern(path, baseCwd)));
+  unique(
+    paths.flatMap((path) => {
+      if (path.includes("*")) return [path];
+      const absolutePath = resolve(
+        baseCwd ?? process.cwd(),
+        path.replace(/^~(?=$|\/)/, homedir()),
+      );
+      return [absolutePath, canonicalizePath(path, baseCwd)];
+    }),
+  );
 
 function sandboxRuntimeReadPaths(platform: NodeJS.Platform): string[] {
   if (platform !== "linux") return [];

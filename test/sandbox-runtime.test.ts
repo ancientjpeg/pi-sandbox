@@ -184,22 +184,67 @@ test("buildRuntimeConfig does not allow a missing SSH_AUTH_SOCK path", () => {
   });
 });
 
-test("buildRuntimeConfig canonicalizes non-glob filesystem paths", () => {
-  const runtime = buildRuntimeConfig({
-    ...DEFAULT_CONFIG,
-    filesystem: {
-      ...DEFAULT_CONFIG.filesystem!,
-      denyRead: ["/tmp"],
-      allowRead: [],
-      allowWrite: ["/tmp"],
-      denyWrite: ["*.key"],
-    },
-  });
+test("buildRuntimeConfig retains literal and canonical allowRead paths", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-sandbox-allow-read-"));
+  const directory = join(root, "directory");
+  const symlink = join(root, "directory-link");
+  mkdirSync(directory);
+  symlinkSync(directory, symlink);
 
-  assert.deepEqual(runtime.filesystem?.denyRead, [canonicalizePath("/tmp")]);
-  assert.equal(runtime.filesystem?.allowRead?.includes(canonicalizePath("/tmp")), true);
-  assert.deepEqual(runtime.filesystem?.allowWrite, [canonicalizePath("/tmp")]);
-  assert.deepEqual(runtime.filesystem?.denyWrite, ["*.key"]);
+  try {
+    const runtime = buildRuntimeConfig(
+      {
+        ...DEFAULT_CONFIG,
+        filesystem: {
+          ...DEFAULT_CONFIG.filesystem!,
+          allowRead: [directory, symlink],
+          allowWrite: [],
+        },
+      },
+      undefined,
+      "darwin",
+      root,
+    );
+
+    assert.deepEqual(runtime.filesystem?.allowRead, [
+      ...new Set([directory, realpathSync(directory), symlink, realpathSync(symlink)]),
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("buildRuntimeConfig preserves literal and canonical paths in all filesystem lists", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-sandbox-filesystem-"));
+  const directory = join(root, "directory");
+  const symlink = join(root, "directory-link");
+  mkdirSync(directory);
+  symlinkSync(directory, symlink);
+
+  try {
+    const paths = ["directory-link", directory, "*.key"];
+    const runtime = buildRuntimeConfig(
+      {
+        ...DEFAULT_CONFIG,
+        filesystem: {
+          denyRead: paths,
+          allowRead: paths,
+          allowWrite: paths,
+          denyWrite: paths,
+        },
+      },
+      undefined,
+      "darwin",
+      root,
+    );
+    const expected = [...new Set([symlink, realpathSync(directory), directory, "*.key"])];
+
+    for (const list of ["denyRead", "allowRead", "allowWrite", "denyWrite"] as const) {
+      assert.deepEqual(runtime.filesystem?.[list], expected, list);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("buildRuntimeConfig forwards denyMandatoryCwdFiles to the runtime", () => {
