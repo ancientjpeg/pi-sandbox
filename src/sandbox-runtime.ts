@@ -51,10 +51,7 @@ const canonicalizeFilesystemPatterns = (paths: string[], baseCwd?: string) =>
   unique(
     paths.flatMap((path) => {
       if (path.includes("*")) return [path];
-      const absolutePath = resolve(
-        baseCwd ?? process.cwd(),
-        path.replace(/^~(?=$|\/)/, homedir()),
-      );
+      const absolutePath = resolve(baseCwd ?? process.cwd(), path.replace(/^~(?=$|\/)/, homedir()));
       return [absolutePath, canonicalizePath(path, baseCwd)];
     }),
   );
